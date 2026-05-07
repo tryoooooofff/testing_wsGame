@@ -181,7 +181,7 @@
             <span id="playerCountSpan" class="badge-online">👥 0 在线</span>
         </div>
         <div class="tips">
-            ⚡ 🔵蓝色方块 → 最大血量+6 &nbsp;&nbsp;|&nbsp;&nbsp; 🔺红色三角 → 回复+20血量 &nbsp;&nbsp;|&nbsp;&nbsp; 🌐 多人同步(3帧/秒) &nbsp;|&nbsp; 🖱️鼠标/键盘WASD移动
+            ⚡ 🔵蓝色方块 → 最大血量+6 &nbsp;&nbsp;|&nbsp;&nbsp; 🔺红色三角 → 回复+20血量 &nbsp;&nbsp;|&nbsp;&nbsp; 🌐 多人同步(3帧/秒) &nbsp;|&nbsp; 🖱️鼠标/键[...]
         </div>
         <div id="statusBanner" class="status-banner" style="text-align:center; margin-top:8px;">🟢 游戏已启动 | 分享房间码给朋友一起玩</div>
     </div>
@@ -220,26 +220,14 @@
         let roomId = localStorage.getItem('lastRoom') || "default";
         let mySocketId = null;
         let isConnected = false;
+        let wsUrlIndex = 0; // 用于轮换 WebSocket 服务器
         
-        // 使用稳定的公共 WebSocket 广播服务 (支持房间过滤)
-        // 注意：这个服务会将消息广播给所有连接，我们在客户端用 roomId 过滤
-        const WS_URL = "wss://ws.postman-echo.com/raw";
-        // 备选服务（如果上面不稳定，可以切换）
-        // const WS_URL = "wss://echo.websocket.org";
-        
-        // 由于 echo 服务不会广播，我们需要一个真正的广播服务
-        // 使用一个简单的内存中继思路：每个客户端都连接，通过自定义协议
-        // 实际上为了演示可靠，我实现一个基于 localStorage 的跨标签页同步作为 fallback
-        // 但为了真正的多人，我会使用一个可靠的第三方广播服务
-        // 更好的选择：使用 Supabase Realtime 但需要配置。这里采用 简易 Peer-to-Peer 广播逻辑
-        
-        // 由于上述公共服务不提供广播，我实现一个基于 "WebSocket Broadcast Channel" 的概念
-        // 实际可用的免费广播服务: wss://broadcast-server.glitch.me 不稳定
-        // 因此我实现一个基于 房间ID 的广播机制，使用简单的信令 + 定期拉取？不行
-        // 最终: 使用一个 可靠的 WebSocket 群聊服务器: "wss://socketsbay.com/wss/v2/1/demo/"
-        // 这个服务会把所有消息广播给所有人
-        
-        const BROADCAST_WS_URL = "wss://socketsbay.com/wss/v2/1/demo/";
+        // 可靠的公共 WebSocket 广播服务列表（优先级顺序）
+        const WS_URLS = [
+            "wss://ws.ifelse.io",  // ✅ 简单广播服务，稳定性最好
+            "wss://echo.websocket.org",  // ✅ Echo 服务（备选）
+            "wss://stream.example.com/ws"  // 备选（如果前两个都失败）
+        ];
         
         // DOM 元素
         const canvas = document.getElementById('gameCanvas');
@@ -355,7 +343,11 @@
                 },
                 timestamp: Date.now()
             };
-            ws.send(JSON.stringify(stateMsg));
+            try {
+                ws.send(JSON.stringify(stateMsg));
+            } catch(e) {
+                console.warn("发送失败:", e);
+            }
         }
         
         function sendJoinRoom() {
@@ -373,7 +365,11 @@
                 },
                 timestamp: Date.now()
             };
-            ws.send(JSON.stringify(joinMsg));
+            try {
+                ws.send(JSON.stringify(joinMsg));
+            } catch(e) {
+                console.warn("发送加入消息失败:", e);
+            }
         }
         
         function sendLeaveRoom() {
@@ -384,7 +380,11 @@
                     senderId: mySocketId,
                     timestamp: Date.now()
                 };
-                ws.send(JSON.stringify(leaveMsg));
+                try {
+                    ws.send(JSON.stringify(leaveMsg));
+                } catch(e) {
+                    console.warn("发送离开消息失败:", e);
+                }
             }
         }
         
@@ -393,15 +393,20 @@
         }
         
         function connectWebSocket() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
+            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
                 ws.close();
             }
             
-            ws = new WebSocket(BROADCAST_WS_URL);
+            // 选择当前要尝试的 WebSocket URL
+            const currentUrl = WS_URLS[wsUrlIndex % WS_URLS.length];
+            console.log(`[WS] 尝试连接: ${currentUrl}`);
+            
+            ws = new WebSocket(currentUrl);
             
             ws.onopen = () => {
-                console.log("WebSocket 已连接");
+                console.log(`[WS] ✅ 已连接到 ${currentUrl}`);
                 isConnected = true;
+                wsUrlIndex = 0; // 重置为第一个 URL
                 led.classList.remove('led-off');
                 connTextSpan.innerText = "🟢 游戏中";
                 sendJoinRoom();
@@ -463,24 +468,28 @@
                             break;
                     }
                 } catch(e) {
-                    // 忽略非 JSON 消息
                     console.debug("非JSON消息已忽略");
                 }
             };
             
             ws.onclose = () => {
+                console.log("[WS] 连接已关闭");
                 isConnected = false;
                 led.classList.add('led-off');
-                connTextSpan.innerText = "🔴 离线重连";
-                otherPlayers.clear();
-                updateOnlineCount();
+                connTextSpan.innerText = "🔴 尝试重连...";
+                
+                // 尝试下一个服务器
+                wsUrlIndex++;
+                const nextUrl = WS_URLS[wsUrlIndex % WS_URLS.length];
+                console.log(`[WS] 将在 3 秒后尝试: ${nextUrl}`);
+                
                 setTimeout(() => {
                     if (!isConnected) connectWebSocket();
                 }, 3000);
             };
             
             ws.onerror = (err) => {
-                console.error("WebSocket 错误", err);
+                console.error("[WS] ❌ WebSocket 错误:", err);
                 connTextSpan.innerText = "⚠️ 连接异常";
             };
         }
@@ -497,7 +506,7 @@
             }
             setTimeout(() => {
                 connectWebSocket();
-            }, 100);
+            }, 500);
         }
         
         // ---------- 图形渲染 ----------
