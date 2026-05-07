@@ -29,21 +29,14 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// ====== WebSocket连接 ======
-const ws = new WebSocket("ws://localhost:8080");
-
+let ws;
 let players = {};
 let objects = [];
 let myId = null;
 
-// 输入状态
-const input = {
-  x: 0,
-  y: 0
-};
-
-// 键盘控制
+const input = { x: 0, y: 0 };
 const keys = {};
+
 window.addEventListener('keydown', e => keys[e.key] = true);
 window.addEventListener('keyup', e => keys[e.key] = false);
 
@@ -56,43 +49,62 @@ function updateInput() {
   if (keys['a'] || keys['ArrowLeft']) input.x -= 1;
   if (keys['d'] || keys['ArrowRight']) input.x += 1;
 
-  ws.send(JSON.stringify({
-    type: 'input',
-    input
-  }));
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'input',
+      input
+    }));
+  }
 }
 
-// 每帧发送输入（可调低频减少流量）
-setInterval(updateInput, 50); // 20Hz
+let inputTimer = null;
 
-ws.onmessage = (msg) => {
-  const data = JSON.parse(msg.data);
+function startInputLoop() {
+  if (inputTimer) clearInterval(inputTimer);
+  inputTimer = setInterval(updateInput, 50);
+}
 
-  if (data.type === 'init') {
-    myId = data.id;
-  }
+function connect() {
+  ws = new WebSocket("ws://localhost:8080");
 
-  if (data.type === 'state') {
-    players = data.players;
-    objects = data.objects;
-  }
-};
+  ws.onopen = () => {
+    console.log("connected");
+    startInputLoop();
+  };
 
-// ====== 渲染 ======
+  ws.onmessage = (msg) => {
+    const data = JSON.parse(msg.data);
+
+    if (data.type === 'init') {
+      myId = data.id;
+    }
+
+    if (data.type === 'state') {
+      players = data.players;
+      objects = data.objects;
+    }
+  };
+
+  ws.onclose = () => {
+    console.log("disconnected, reconnecting...");
+    setTimeout(connect, 1000);
+  };
+
+  ws.onerror = () => {
+    ws.close();
+  };
+}
+
+connect();
+
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // 画方块/三角
   for (const o of objects) {
-    if (o.type === 'blue') ctx.fillStyle = 'blue';
-    if (o.type === 'red') ctx.fillStyle = 'red';
-
-    ctx.beginPath();
-    ctx.rect(o.x - 5, o.y - 5, 10, 10);
-    ctx.fill();
+    ctx.fillStyle = o.type === 'blue' ? 'blue' : 'red';
+    ctx.fillRect(o.x - 5, o.y - 5, 10, 10);
   }
 
-  // 画玩家
   for (const id in players) {
     const p = players[id];
 
@@ -101,7 +113,7 @@ function draw() {
     ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
     ctx.fill();
 
-    // 血条
+    // HP bar
     ctx.fillStyle = 'red';
     ctx.fillRect(p.x - 20, p.y - 30, 40, 4);
 
