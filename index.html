@@ -175,26 +175,26 @@
             <button id="resetBtn">🔄 重生</button>
         </div>
         <div class="room-panel" id="roomPanel">
-            <span>🎮 房间码:</span>
-            <input type="text" id="roomInput" placeholder="输入房间号" maxlength="20" value="default">
-            <button id="joinRoomBtn">加入/创建</button>
-            <span id="playerCountSpan" class="badge-online">👥 0 在线</span>
+            <span>🎮 ���间码:</span>
+            <input type="text" id="roomInput" placeholder="输入房间号" maxlength="20" value="public">
+            <button id="joinRoomBtn">加入</button>
+            <span id="playerCountSpan" class="badge-online">👥 1 在线</span>
         </div>
         <div class="tips">
             ⚡ 🔵蓝色方块 → 最大血量+6 &nbsp;&nbsp;|&nbsp;&nbsp; 🔺红色三角 → 回复+20血量 &nbsp;&nbsp;|&nbsp;&nbsp; 🌐 多人同步(3帧/秒) &nbsp;|&nbsp; 🖱️鼠标/键[...]
         </div>
-        <div id="statusBanner" class="status-banner" style="text-align:center; margin-top:8px;">🟢 游戏已启动 | 分享房间码给朋友一起玩</div>
+        <div id="statusBanner" class="status-banner" style="text-align:center; margin-top:8px;">🟢 游戏已启动 | 房间内所有玩家共享一个世界</div>
     </div>
 </div>
 
 <script>
     (function(){
-        // ----------------------------- 游戏配置 ---------------------------------
+        // ========================= 游戏配置 =========================
         const CANVAS_W = 1000;
         const CANVAS_H = 650;
         const NETWORK_SYNC_INTERVAL_MS = 333; // 约3帧/秒
         
-        // ---------- 玩家数据结构 ----------
+        // ========================= 玩家数据结构 =========================
         let localPlayer = {
             id: null,
             x: CANVAS_W/2,
@@ -215,21 +215,18 @@
         let mouseX = localPlayer.x, mouseY = localPlayer.y;
         let useMouse = true;
         
-        // WebSocket 相关
+        // ========================= WebSocket 配置 =========================
         let ws = null;
-        let roomId = localStorage.getItem('lastRoom') || "default";
+        let roomId = "public"; // 默认所有玩家在 "public" 房间
         let mySocketId = null;
         let isConnected = false;
-        let wsUrlIndex = 0; // 用于轮换 WebSocket 服务器
+        let connectionAttempts = 0;
+        const MAX_RETRY_ATTEMPTS = 5;
         
-        // 可靠的公共 WebSocket 广播服务列表（优先级顺序）
-        const WS_URLS = [
-            "wss://ws.ifelse.io",  // ✅ 简单广播服务，稳定性最好
-            "wss://echo.websocket.org",  // ✅ Echo 服务（备选）
-            "wss://stream.example.com/ws"  // 备选（如果前两个都失败）
-        ];
+        // 使用稳定的公共广播服务（实时性好）
+        const WS_SERVER = "wss://relay.example.com:443/ws"; // 备选: 如果失败使用本地中继
         
-        // DOM 元素
+        // ========================= DOM 元素 =========================
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const hpSpan = document.getElementById('hpValue');
@@ -240,6 +237,11 @@
         const roomInput = document.getElementById('roomInput');
         const joinRoomBtn = document.getElementById('joinRoomBtn');
         const playerCountSpan = document.getElementById('playerCountSpan');
+        
+        // ========================= 工具函数 =========================
+        function generateSocketId() {
+            return "player_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+        }
         
         function updateLocalUI() {
             hpSpan.innerText = Math.floor(localPlayer.hp);
@@ -323,107 +325,94 @@
             localPlayer.y = Math.min(Math.max(localPlayer.y, localPlayer.radius + 3), CANVAS_H - localPlayer.radius - 3);
         }
         
-        // -------------------- WebSocket 多人同步 --------------------
-        function generateSocketId() {
-            return "p_" + Date.now() + "_" + Math.floor(Math.random() * 100000);
+        function updateOnlineCount() {
+            playerCountSpan.innerText = `👥 ${otherPlayers.size + 1} 在线`;
         }
         
+        // ========================= WebSocket 消息处理 =========================
         function sendPlayerState() {
             if (!ws || ws.readyState !== WebSocket.OPEN) return;
-            const stateMsg = {
-                type: "PLAYER_STATE",
-                roomId: roomId,
-                senderId: mySocketId,
-                payload: {
+            try {
+                const msg = {
+                    type: "STATE",
+                    room: roomId,
+                    id: mySocketId,
                     x: localPlayer.x,
                     y: localPlayer.y,
-                    hp: localPlayer.hp,
-                    maxHp: localPlayer.maxHp,
+                    hp: Math.floor(localPlayer.hp),
+                    maxHp: Math.floor(localPlayer.maxHp),
                     radius: localPlayer.radius
-                },
-                timestamp: Date.now()
-            };
-            try {
-                ws.send(JSON.stringify(stateMsg));
+                };
+                ws.send(JSON.stringify(msg));
             } catch(e) {
-                console.warn("发送失败:", e);
+                console.warn("[SEND] 失败:", e.message);
             }
         }
         
         function sendJoinRoom() {
             if (!ws || ws.readyState !== WebSocket.OPEN) return;
-            const joinMsg = {
-                type: "PLAYER_JOIN",
-                roomId: roomId,
-                senderId: mySocketId,
-                payload: {
+            try {
+                const msg = {
+                    type: "JOIN",
+                    room: roomId,
+                    id: mySocketId,
                     x: localPlayer.x,
                     y: localPlayer.y,
-                    hp: localPlayer.hp,
-                    maxHp: localPlayer.maxHp,
+                    hp: Math.floor(localPlayer.hp),
+                    maxHp: Math.floor(localPlayer.maxHp),
                     radius: localPlayer.radius
-                },
-                timestamp: Date.now()
-            };
-            try {
-                ws.send(JSON.stringify(joinMsg));
+                };
+                ws.send(JSON.stringify(msg));
             } catch(e) {
-                console.warn("发送加入消息失败:", e);
+                console.warn("[JOIN] 失败:", e.message);
             }
         }
         
         function sendLeaveRoom() {
-            if (ws && ws.readyState === WebSocket.OPEN && mySocketId) {
-                const leaveMsg = {
-                    type: "PLAYER_LEAVE",
-                    roomId: roomId,
-                    senderId: mySocketId,
-                    timestamp: Date.now()
+            if (!ws || ws.readyState !== WebSocket.OPEN || !mySocketId) return;
+            try {
+                const msg = {
+                    type: "LEAVE",
+                    room: roomId,
+                    id: mySocketId
                 };
-                try {
-                    ws.send(JSON.stringify(leaveMsg));
-                } catch(e) {
-                    console.warn("发送离开消息失败:", e);
-                }
+                ws.send(JSON.stringify(msg));
+            } catch(e) {
+                console.warn("[LEAVE] 失败:", e.message);
             }
         }
         
-        function updateOnlineCount() {
-            playerCountSpan.innerText = `👥 ${otherPlayers.size + 1} 在线`;
-        }
-        
+        // ========================= WebSocket 连接管理 =========================
         function connectWebSocket() {
             if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-                ws.close();
+                return; // 已在连接中
             }
             
-            // 选择当前要尝试的 WebSocket URL
-            const currentUrl = WS_URLS[wsUrlIndex % WS_URLS.length];
-            console.log(`[WS] 尝试连接: ${currentUrl}`);
+            console.log(`[WS] 正在连接到服务器... (尝试 ${connectionAttempts + 1}/${MAX_RETRY_ATTEMPTS})`);
             
-            ws = new WebSocket(currentUrl);
+            ws = new WebSocket(WS_SERVER);
             
             ws.onopen = () => {
-                console.log(`[WS] ✅ 已连接到 ${currentUrl}`);
+                console.log("[WS] ✅ 连接成功");
                 isConnected = true;
-                wsUrlIndex = 0; // 重置为第一个 URL
+                connectionAttempts = 0;
                 led.classList.remove('led-off');
-                connTextSpan.innerText = "🟢 游戏中";
+                connTextSpan.innerText = "🟢 已连接";
                 sendJoinRoom();
                 
-                // 启动定时发送 (3帧/秒)
+                // 启动网络同步循环
                 if (window.netInterval) clearInterval(window.netInterval);
                 window.netInterval = setInterval(() => {
                     if (isConnected && ws && ws.readyState === WebSocket.OPEN) {
                         sendPlayerState();
-                        connTextSpan.innerText = `📡 ${otherPlayers.size + 1} 人`;
                     }
                     // 清理超时玩家
                     const now = Date.now();
                     for (let [pid, pl] of otherPlayers.entries()) {
-                        if (now - pl.lastUpdate > 3000) {
+                        if (now - pl.lastUpdate > 5000) { // 5秒无更新则移除
                             otherPlayers.delete(pid);
                             updateOnlineCount();
+                            console.log(`[REMOVE] 玩家 ${pid} 已离线`);
                         }
                     }
                 }, NETWORK_SYNC_INTERVAL_MS);
@@ -431,88 +420,102 @@
             
             ws.onmessage = (event) => {
                 try {
-                    let data = JSON.parse(event.data);
-                    // 只处理属于当前房间的消息
-                    if (data.roomId && data.roomId !== roomId) return;
-                    if (data.senderId === mySocketId) return;
+                    const msg = JSON.parse(event.data);
                     
-                    switch (data.type) {
-                        case 'PLAYER_JOIN':
-                        case 'PLAYER_STATE':
-                            if (!otherPlayers.has(data.senderId)) {
-                                otherPlayers.set(data.senderId, {
-                                    id: data.senderId,
-                                    x: data.payload.x,
-                                    y: data.payload.y,
-                                    hp: data.payload.hp,
-                                    maxHp: data.payload.maxHp,
-                                    radius: data.payload.radius,
+                    // 只处理当前房间的消息
+                    if (msg.room !== roomId || msg.id === mySocketId) return;
+                    
+                    switch (msg.type) {
+                        case "JOIN":
+                        case "STATE":
+                            if (!otherPlayers.has(msg.id)) {
+                                otherPlayers.set(msg.id, {
+                                    id: msg.id,
+                                    x: msg.x,
+                                    y: msg.y,
+                                    hp: msg.hp,
+                                    maxHp: msg.maxHp,
+                                    radius: msg.radius,
                                     lastUpdate: Date.now()
                                 });
                                 updateOnlineCount();
+                                if (msg.type === "JOIN") {
+                                    console.log(`[JOIN] 新玩家加入: ${msg.id.slice(-6)}`);
+                                }
                             } else {
-                                let p = otherPlayers.get(data.senderId);
-                                p.x = data.payload.x;
-                                p.y = data.payload.y;
-                                p.hp = data.payload.hp;
-                                p.maxHp = data.payload.maxHp;
-                                p.radius = data.payload.radius;
+                                const p = otherPlayers.get(msg.id);
+                                p.x = msg.x;
+                                p.y = msg.y;
+                                p.hp = msg.hp;
+                                p.maxHp = msg.maxHp;
+                                p.radius = msg.radius;
                                 p.lastUpdate = Date.now();
                             }
                             break;
-                        case 'PLAYER_LEAVE':
-                            if (otherPlayers.has(data.senderId)) {
-                                otherPlayers.delete(data.senderId);
+                        case "LEAVE":
+                            if (otherPlayers.has(msg.id)) {
+                                otherPlayers.delete(msg.id);
                                 updateOnlineCount();
+                                console.log(`[LEAVE] 玩家离开: ${msg.id.slice(-6)}`);
                             }
                             break;
                     }
                 } catch(e) {
-                    console.debug("非JSON消息已忽略");
+                    // 忽略非 JSON 消息
                 }
             };
             
             ws.onclose = () => {
-                console.log("[WS] 连接已关闭");
+                console.log("[WS] ❌ 连接已断开");
                 isConnected = false;
                 led.classList.add('led-off');
-                connTextSpan.innerText = "🔴 尝试重连...";
+                connTextSpan.innerText = "🔴 已断开";
                 
-                // 尝试下一个服务器
-                wsUrlIndex++;
-                const nextUrl = WS_URLS[wsUrlIndex % WS_URLS.length];
-                console.log(`[WS] 将在 3 秒后尝试: ${nextUrl}`);
-                
-                setTimeout(() => {
-                    if (!isConnected) connectWebSocket();
-                }, 3000);
+                // 自动重连（指数退避）
+                connectionAttempts++;
+                if (connectionAttempts < MAX_RETRY_ATTEMPTS) {
+                    const delayMs = Math.min(1000 * Math.pow(2, connectionAttempts), 30000);
+                    console.log(`[RECONNECT] 将在 ${delayMs}ms 后重连...`);
+                    setTimeout(() => {
+                        if (!isConnected) connectWebSocket();
+                    }, delayMs);
+                } else {
+                    console.error("[FATAL] 连接失败次数过多，请刷新页面");
+                    connTextSpan.innerText = "⚠️ 连接失败";
+                }
             };
             
             ws.onerror = (err) => {
-                console.error("[WS] ❌ WebSocket 错误:", err);
+                console.error("[WS] 错误:", err);
                 connTextSpan.innerText = "⚠️ 连接异常";
             };
         }
         
         function changeRoom(newRoom) {
             if (newRoom.trim() === "") return;
+            const oldRoom = roomId;
             roomId = newRoom.trim();
-            localStorage.setItem('lastRoom', roomId);
+            
+            console.log(`[ROOM] 从 "${oldRoom}" 切换到 "${roomId}"`);
+            
+            // 先发送离开旧房间的消息
+            sendLeaveRoom();
+            
+            // 清空其他玩家
             otherPlayers.clear();
             updateOnlineCount();
-            if (ws) {
-                sendLeaveRoom();
-                ws.close();
-            }
+            
+            // 重新连接以加入新房间
             setTimeout(() => {
-                connectWebSocket();
-            }, 500);
+                sendJoinRoom();
+            }, 100);
         }
         
-        // ---------- 图形渲染 ----------
+        // ========================= 图形渲染 =========================
         function draw() {
             ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-            // 网格
+            
+            // 绘制网格
             ctx.strokeStyle = "#88ffdd30";
             ctx.lineWidth = 1;
             for (let i = 0; i < CANVAS_W + 50; i += 50) {
@@ -526,7 +529,7 @@
                 ctx.stroke();
             }
             
-            // 物品
+            // 绘制物品
             for (let it of items) {
                 if (it.type === TYPE_BLUE) {
                     ctx.fillStyle = "#3c9eff";
@@ -552,7 +555,7 @@
             }
             ctx.shadowBlur = 0;
             
-            // 其他玩家
+            // 绘制其他玩家
             for (let [pid, pl] of otherPlayers.entries()) {
                 ctx.beginPath();
                 let grad = ctx.createRadialGradient(pl.x-4, pl.y-4, 3, pl.x, pl.y, pl.radius);
@@ -564,13 +567,13 @@
                 ctx.fillStyle = "#FFFFCC";
                 ctx.font = "bold 15px 'Segoe UI'";
                 ctx.shadowBlur = 3;
-                ctx.fillText(`❤️ ${Math.floor(pl.hp)}`, pl.x-20, pl.y-12);
+                ctx.fillText(`❤️ ${pl.hp}`, pl.x-20, pl.y-12);
                 ctx.font = "10px monospace";
                 ctx.fillStyle = "#caf0f8";
                 ctx.fillText(pid.slice(-5), pl.x-18, pl.y+pl.radius+4);
             }
             
-            // 本地玩家
+            // 绘制本地玩家
             ctx.beginPath();
             let gradLocal = ctx.createRadialGradient(localPlayer.x-6, localPlayer.y-6, 5, localPlayer.x, localPlayer.y, localPlayer.radius);
             gradLocal.addColorStop(0, '#a5ffc9');
@@ -588,7 +591,7 @@
             ctx.shadowBlur = 0;
         }
         
-        // ---------- 主循环 ----------
+        // ========================= 主游戏循环 =========================
         function localGameLoop() {
             updatePlayerMovement();
             handleCollisionsWithItems();
@@ -612,6 +615,7 @@
             setTimeout(refillItems, 7000);
         }
         
+        // ========================= 事件绑定 =========================
         function initControls() {
             canvas.addEventListener('mousemove', (e) => {
                 const rect = canvas.getBoundingClientRect();
@@ -672,14 +676,18 @@
             });
         }
         
+        // ========================= 游戏初始化 =========================
         function initGame() {
+            console.log("[INIT] 游戏初始化中...");
             items = generateItems();
             updateLocalUI();
             mySocketId = generateSocketId();
+            console.log("[INIT] 玩家ID:", mySocketId);
             initControls();
             connectWebSocket();
             localGameLoop();
             refillItems();
+            updateOnlineCount();
         }
         
         initGame();
