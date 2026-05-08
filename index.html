@@ -181,7 +181,7 @@
             <span id="playerCountSpan" class="badge-online">👥 1 在线</span>
         </div>
         <div class="tips">
-            ⚡ 🔵蓝色方块 → 最大血量+6 &nbsp;&nbsp;|&nbsp;&nbsp; 🔺红色三角 → 回复+20血量 &nbsp;&nbsp;|&nbsp;&nbsp; 🌐 多人同步(3帧/秒) &nbsp;|&nbsp; 🖱️鼠标/键盘方向键移动
+            ⚡ 🔵蓝色方块 → 最大血量+6 &nbsp;&nbsp;|&nbsp;&nbsp; 🔺红色三角 → 回复+20血量 &nbsp;&nbsp;|&nbsp;&nbsp; 🌐 多人同步(3帧/秒) &nbsp;|&nbsp; 🖱️鼠标/键盘控制
         </div>
         <div id="statusBanner" class="status-banner" style="text-align:center; margin-top:8px;">🟢 游戏已启动 | 房间内所有玩家共享一个世界</div>
     </div>
@@ -223,10 +223,16 @@
         let connectionAttempts = 0;
         const MAX_RETRY_ATTEMPTS = 5;
         
-        // TODO: 替换为实际的 WebSocket 服务器地址
-        // 本地开发: "ws://localhost:8080"
-        // 生产环境: 部署自己的 WebSocket 服务器
-        const WS_SERVER = "wss://echo.websocket.org/";
+        // 获取 WebSocket 服务器地址
+        function getWebSocketURL() {
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                return 'ws://localhost:8080';
+            }
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            return `${protocol}//${window.location.host}`;
+        }
+        
+        const WS_SERVER = getWebSocketURL();
         
         // ========================= DOM 元素 =========================
         const canvas = document.getElementById('gameCanvas');
@@ -391,6 +397,7 @@
             }
             
             console.log(`[WS] 正在连接到服务器... (尝试 ${connectionAttempts + 1}/${MAX_RETRY_ATTEMPTS})`);
+            console.log(`[WS] 服务器: ${WS_SERVER}`);
             
             ws = new WebSocket(WS_SERVER);
             
