@@ -1,112 +1,110 @@
 const WebSocket = require('ws');
+const http = require('http');
+const cors = require('cors');
+const express = require('express');
 
-const wss = new WebSocket.Server({ port: 8080 });
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-let players = {};
-let objects = [];
+app.use(cors());
+app.use(express.static('.'));
 
-// ===== 初始化地图物体 =====
-for (let i = 0; i < 30; i++) {
-  objects.push({
-    id: i,
-    type: Math.random() > 0.5 ? 'blue' : 'red',
-    x: Math.random() * 800,
-    y: Math.random() * 600,
-    r: 8
-  });
-}
+const rooms = new Map(); // { roomId: Set<player> }
+const players = new Map(); // { ws: { id, room, x, y, ... } }
 
-// ===== 连接处理 =====
 wss.on('connection', (ws) => {
-  const id = Math.random().toString(36).slice(2, 10);
+    console.log('[WS] New connection');
+    let playerData = null;
 
-  players[id] = {
-    x: 400,
-    y: 300,
-    r: 10,
-    hp: 50,
-    maxHp: 50,
-    input: { x: 0, y: 0 }
-  };
+    ws.on('message', (data) => {
+        try {
+            const msg = JSON.parse(data);
+            const { type, room, id, x, y, hp, maxHp, radius } = msg;
 
-  // 发ID
-  ws.send(JSON.stringify({
-    type: 'init',
-    id
-  }));
+            // First time joining
+            if (!playerData) {
+                playerData = { id, room, x, y, hp, maxHp, radius };
+                players.set(ws, playerData);
+                
+                if (!rooms.has(room)) {
+                    rooms.set(room, new Set());
+                }
+                rooms.get(room).add(ws);
+                console.log(`[JOIN] Player ${id.slice(-6)} joined room "${room}"`);
+            } else {
+                // Update existing player data
+                playerData.room = room;
+                playerData.x = x;
+                playerData.y = y;
+                playerData.hp = hp;
+                playerData.maxHp = maxHp;
+                playerData.radius = radius;
+            }
 
-  // 收输入
-  ws.on('message', (msg) => {
-    try {
-      const data = JSON.parse(msg);
+            // Handle room changes
+            if (playerData.room !== room) {
+                // Leave old room
+                if (rooms.has(playerData.room)) {
+                    rooms.get(playerData.room).delete(ws);
+                    // Notify others
+                    broadcastToRoom(playerData.room, {
+                        type: 'LEAVE',
+                        id: id,
+                        room: playerData.room
+                    });
+                }
+                // Join new room
+                playerData.room = room;
+                if (!rooms.has(room)) {
+                    rooms.set(room, new Set());
+                }
+                rooms.get(room).add(ws);
+                console.log(`[ROOM_CHANGE] Player ${id.slice(-6)} moved to "${room}"`);
+            }
 
-      if (data.type === 'input' && players[id]) {
-        players[id].input = data.input || { x: 0, y: 0 };
-      }
-    } catch (e) {
-      // 忽略非法数据
-    }
-  });
+            // Broadcast message to all players in the room
+            broadcastToRoom(room, msg);
 
-  // 断开连接
-  ws.on('close', () => {
-    delete players[id];
-  });
+        } catch (e) {
+            console.error('[ERROR] Message parsing:', e.message);
+        }
+    });
+
+    ws.on('close', () => {
+        if (playerData) {
+            const { id, room } = playerData;
+            console.log(`[LEAVE] Player ${id.slice(-6)} disconnected from "${room}"`);
+            
+            if (rooms.has(room)) {
+                rooms.get(room).delete(ws);
+                // Notify others
+                broadcastToRoom(room, {
+                    type: 'LEAVE',
+                    id: id,
+                    room: room
+                });
+            }
+        }
+        players.delete(ws);
+    });
+
+    ws.on('error', (err) => {
+        console.error('[WS_ERROR]', err.message);
+    });
 });
 
-// ===== 游戏主循环（20Hz）=====
-setInterval(() => {
-  // 更新玩家
-  for (const id in players) {
-    const p = players[id];
-    if (!p) continue;
-
-    // 输入安全处理（防 NaN）
-    const ix = p.input?.x || 0;
-    const iy = p.input?.y || 0;
-
-    // 移动
-    p.x += ix * 3;
-    p.y += iy * 3;
-
-    // 边界限制
-    p.x = Math.max(0, Math.min(1000, p.x));
-    p.y = Math.max(0, Math.min(800, p.y));
-
-    // 碰撞检测
-    for (const o of objects) {
-      const dx = p.x - o.x;
-      const dy = p.y - o.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (dist < p.r + o.r) {
-        if (o.type === 'blue') {
-          p.maxHp += 1;
-          p.hp += 0.5;
-        } else {
-          p.hp += 1;
+function broadcastToRoom(room, msg) {
+    if (!rooms.has(room)) return;
+    rooms.get(room).forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(msg));
         }
+    });
+}
 
-        p.hp = Math.min(p.hp, p.maxHp);
-      }
-    }
-  }
-
-  // ===== 广播（安全版）=====
-  const payload = JSON.stringify({
-    type: 'state',
-    players,
-    objects
-  });
-
-  wss.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
-      try {
-        client.send(payload);
-      } catch (e) {
-        // 忽略发送失败
-      }
-    }
-  });
-
-}, 50); // 20Hz
+const PORT = process.env.PORT || 8080;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 WebSocket relay server running on port ${PORT}`);
+    console.log(`📡 Connect to: ws://localhost:${PORT}`);
+});
