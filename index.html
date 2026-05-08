@@ -1,706 +1,105 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>球球大作战：多人实时联网 | WebSocket 低流量同步</title>
-    <style>
-        * {
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-        body {
-            margin: 0;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #0a2a28 0%, #0a1f2a 100%);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-family: 'Segoe UI', 'Poppins', system-ui, sans-serif;
-            padding: 20px;
-        }
-        .game-wrapper {
-            background: rgba(0, 20, 20, 0.6);
-            border-radius: 48px;
-            padding: 20px;
-            backdrop-filter: blur(4px);
-            box-shadow: 0 25px 40px rgba(0,0,0,0.5);
-        }
-        canvas {
-            display: block;
-            margin: 0 auto;
-            border-radius: 28px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
-            cursor: none;
-            background: radial-gradient(circle at 30% 20%, #2a5a55, #143a3a);
-            width: 100%;
-            height: auto;
-            aspect-ratio: 1000 / 650;
-        }
-        .info-panel {
-            margin-top: 16px;
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-            align-items: center;
-            gap: 12px;
-            background: #0a1820cc;
-            backdrop-filter: blur(8px);
-            padding: 10px 22px;
-            border-radius: 60px;
-            color: white;
-            font-weight: bold;
-            border: 1px solid #4effc070;
-        }
-        .stats {
-            display: flex;
-            gap: 28px;
-            background: #00000066;
-            padding: 5px 18px;
-            border-radius: 40px;
-        }
-        .stat {
-            display: flex;
-            align-items: baseline;
-            gap: 6px;
-            font-size: 1.2rem;
-        }
-        .stat-label {
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            background: #ffffff30;
-            padding: 2px 8px;
-            border-radius: 20px;
-        }
-        .stat-value {
-            font-size: 1.5rem;
-            font-weight: 800;
-            text-shadow: 0 0 6px #00ffb3;
-        }
-        .connection-status {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: #00000070;
-            padding: 5px 16px;
-            border-radius: 32px;
-        }
-        .led {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #2effb0;
-            box-shadow: 0 0 8px #2effb0;
-            transition: 0.1s;
-        }
-        .led-off {
-            background: #ff5e6e;
-            box-shadow: none;
-        }
-        button {
-            background: #3affb3;
-            border: none;
-            font-weight: bold;
-            padding: 6px 20px;
-            border-radius: 40px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            transition: 0.2s;
-            color: #063832;
-        }
-        button:hover {
-            background: #b5ffe0;
-            transform: scale(0.96);
-        }
-        .room-panel {
-            margin-top: 12px;
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            justify-content: center;
-            background: #0a1f1cd9;
-            border-radius: 60px;
-            padding: 6px 18px;
-            font-size: 13px;
-            font-family: monospace;
-            flex-wrap: wrap;
-        }
-        .room-panel input {
-            background: #eef5f0;
-            border: none;
-            border-radius: 40px;
-            padding: 6px 12px;
-            width: 140px;
-            text-align: center;
-            font-weight: bold;
-        }
-        .badge-online {
-            background: #00a87e;
-            padding: 2px 10px;
-            border-radius: 30px;
-            font-size: 12px;
-        }
-        @media (max-width: 700px) {
-            .stat-value { font-size: 1.1rem; }
-            .info-panel { padding: 8px 12px; }
-        }
-        .tips {
-            font-size: 11px;
-            text-align: center;
-            margin-top: 8px;
-            color: #9effcf;
-        }
-        .status-banner {
-            background: #1e3a3a;
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>⚔ Tank Battle — WebSocket Multiplayer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0d1a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    color: #ccc;
+    overflow: hidden;
+  }
+  h1 {
+    font-size: 20px;
+    color: #44aaff;
+    letter-spacing: 3px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  #canvas-wrap {
+    position: relative;
+    width: min(800px, 100vw);
+    aspect-ratio: 800 / 600;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border: 1px solid rgba(100,200,255,0.2);
+  }
+  #overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 10, 26, 0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 10;
+  }
+  #overlay h2 { font-size: 26px; color: #44aaff; letter-spacing: 4px; }
+  #overlay p  { font-size: 12px; color: #666; text-align: center; line-height: 1.8; }
+  #nameInput {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(100,200,255,0.4);
+    color: #fff;
+    padding: 10px 18px;
+    font-size: 16px;
+    font-family: monospace;
+    border-radius: 4px;
+    outline: none;
+    width: 220px;
+    text-align: center;
+  }
+  #nameInput::placeholder { color: #555; }
+  #joinBtn {
+    background: #44aaff;
+    border: none;
+    color: #0d0d1a;
+    padding: 10px 32px;
+    font-size: 15px;
+    font-family: monospace;
+    font-weight: bold;
+    border-radius: 4px;
+    cursor: pointer;
+    letter-spacing: 2px;
+    transition: background 0.2s;
+  }
+  #joinBtn:hover { background: #66ccff; }
+  #status { font-size: 13px; color: #ff6666; min-height: 20px; }
+  .tips {
+    font-size: 11px;
+    color: #444;
+    margin-top: 8px;
+    line-height: 2;
+  }
+</style>
 </head>
 <body>
-<div>
-    <div class="game-wrapper">
-        <canvas id="gameCanvas" width="1000" height="650" style="width:100%; max-width:1000px; aspect-ratio:1000/650"></canvas>
-        <div class="info-panel">
-            <div class="stats">
-                <div class="stat"><span class="stat-label">❤️ 血量</span><span id="hpValue" class="stat-value">100</span></div>
-                <div class="stat"><span class="stat-label">⭐ 上限</span><span id="maxHpValue" class="stat-value">100</span></div>
-                <div class="stat"><span class="stat-label">⚪ 体型</span><span id="sizeValue" class="stat-value">22</span></div>
-            </div>
-            <div class="connection-status">
-                <div id="ledIndicator" class="led"></div>
-                <span id="connText" class="badge-online">连接中...</span>
-            </div>
-            <button id="resetBtn">🔄 重生</button>
-        </div>
-        <div class="room-panel" id="roomPanel">
-            <span>🎮 房间码:</span>
-            <input type="text" id="roomInput" placeholder="输入房间号" maxlength="20" value="public">
-            <button id="joinRoomBtn">加入</button>
-            <span id="playerCountSpan" class="badge-online">👥 1 在线</span>
-        </div>
-        <div class="tips">
-            ⚡ 🔵蓝色方块 → 最大血量+6 &nbsp;&nbsp;|&nbsp;&nbsp; 🔺红色三角 → 回复+20血量 &nbsp;&nbsp;|&nbsp;&nbsp; 🌐 多人同步(3帧/秒) &nbsp;|&nbsp; 🖱️鼠标/键盘控制
-        </div>
-        <div id="statusBanner" class="status-banner" style="text-align:center; margin-top:8px;">🟢 游戏已启动 | 房间内所有玩家共享一个世界</div>
+<h1>⚔ Tank Battle</h1>
+<div id="canvas-wrap">
+  <canvas id="game" width="800" height="600"></canvas>
+  <div id="overlay">
+    <h2>TANK BATTLE</h2>
+    <p>多人实时对战 · WebSocket · 低延迟二进制协议</p>
+    <input id="nameInput" type="text" placeholder="输入你的名字" maxlength="12" autofocus>
+    <button id="joinBtn">开始战斗</button>
+    <span id="status"></span>
+    <div class="tips">
+      WASD / 方向键 移动 &nbsp;|&nbsp; 鼠标瞄准 &nbsp;|&nbsp; 鼠标左键 / 空格 射击<br>
+      🔫 弹药补给 &nbsp;|&nbsp; 🛡 护盾 &nbsp;|&nbsp; 击杀得分
     </div>
+  </div>
 </div>
-
-<script>
-    (function(){
-        // ========================= 游戏配置 =========================
-        const CANVAS_W = 1000;
-        const CANVAS_H = 650;
-        const NETWORK_SYNC_INTERVAL_MS = 333; // 约3帧/秒
-        
-        // ========================= 玩家数据结构 =========================
-        let localPlayer = {
-            id: null,
-            x: CANVAS_W/2,
-            y: CANVAS_H/2,
-            hp: 100,
-            maxHp: 100,
-            radius: 22
-        };
-        
-        let otherPlayers = new Map();
-        let items = [];
-        const ITEM_COUNT = 18;
-        const TYPE_BLUE = 0;
-        const TYPE_RED = 1;
-        
-        // 移动控制
-        let keys = { w: false, s: false, a: false, d: false };
-        let mouseX = localPlayer.x, mouseY = localPlayer.y;
-        let useMouse = true;
-        
-        // ========================= WebSocket 配置 =========================
-        let ws = null;
-        let roomId = "public"; // 默认所有玩家在 "public" 房间
-        let mySocketId = null;
-        let isConnected = false;
-        let connectionAttempts = 0;
-        const MAX_RETRY_ATTEMPTS = 5;
-        
-        // 获取 WebSocket 服务器地址
-        function getWebSocketURL() {
-            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-                return 'ws://localhost:8080';
-            }
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            return `${protocol}//${window.location.host}`;
-        }
-        
-        const WS_SERVER = getWebSocketURL();
-        
-        // ========================= DOM 元素 =========================
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const hpSpan = document.getElementById('hpValue');
-        const maxHpSpan = document.getElementById('maxHpValue');
-        const sizeSpan = document.getElementById('sizeValue');
-        const led = document.getElementById('ledIndicator');
-        const connTextSpan = document.getElementById('connText');
-        const roomInput = document.getElementById('roomInput');
-        const joinRoomBtn = document.getElementById('joinRoomBtn');
-        const playerCountSpan = document.getElementById('playerCountSpan');
-        
-        // ========================= 工具函数 =========================
-        function generateSocketId() {
-            return "player_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
-        }
-        
-        function updateLocalUI() {
-            hpSpan.innerText = Math.floor(localPlayer.hp);
-            maxHpSpan.innerText = Math.floor(localPlayer.maxHp);
-            let newRadius = Math.min(56, 16 + Math.floor(localPlayer.maxHp / 11));
-            localPlayer.radius = Math.max(14, newRadius);
-            sizeSpan.innerText = localPlayer.radius;
-        }
-        
-        function respawnPlayer() {
-            localPlayer.hp = localPlayer.maxHp;
-            localPlayer.x = Math.random() * (CANVAS_W - 80) + 40;
-            localPlayer.y = Math.random() * (CANVAS_H - 80) + 40;
-            updateLocalUI();
-            sendPlayerState();
-        }
-        
-        function generateItems() {
-            let newItems = [];
-            for (let i = 0; i < ITEM_COUNT; i++) {
-                let type = Math.random() < 0.55 ? TYPE_BLUE : TYPE_RED;
-                newItems.push({
-                    type: type,
-                    x: 35 + Math.random() * (CANVAS_W - 70),
-                    y: 35 + Math.random() * (CANVAS_H - 70),
-                    size: 20
-                });
-            }
-            return newItems;
-        }
-        
-        function handleCollisionsWithItems() {
-            for (let i = 0; i < items.length; i++) {
-                const it = items[i];
-                const dx = localPlayer.x - it.x;
-                const dy = localPlayer.y - it.y;
-                const dist = Math.hypot(dx, dy);
-                const threshold = localPlayer.radius + it.size/1.8;
-                if (dist < threshold) {
-                    if (it.type === TYPE_BLUE) {
-                        localPlayer.maxHp += 6;
-                        if (localPlayer.maxHp > 500) localPlayer.maxHp = 500;
-                        localPlayer.hp = Math.min(localPlayer.maxHp, localPlayer.hp + 8);
-                        updateLocalUI();
-                    } else {
-                        localPlayer.hp = Math.min(localPlayer.maxHp, localPlayer.hp + 20);
-                        updateLocalUI();
-                    }
-                    it.x = 35 + Math.random() * (CANVAS_W - 70);
-                    it.y = 35 + Math.random() * (CANVAS_H - 70);
-                }
-            }
-        }
-        
-        function updatePlayerMovement() {
-            let speed = 5.2;
-            if (useMouse) {
-                let dx = mouseX - localPlayer.x;
-                let dy = mouseY - localPlayer.y;
-                let len = Math.hypot(dx, dy);
-                if (len > 1.2) {
-                    let move = Math.min(speed, len);
-                    localPlayer.x += (dx / len) * move;
-                    localPlayer.y += (dy / len) * move;
-                }
-            } else {
-                let moveX = 0, moveY = 0;
-                if (keys.w) moveY -= 1;
-                if (keys.s) moveY += 1;
-                if (keys.a) moveX -= 1;
-                if (keys.d) moveX += 1;
-                if (moveX !== 0 || moveY !== 0) {
-                    let len = Math.hypot(moveX, moveY);
-                    moveX /= len;
-                    moveY /= len;
-                    localPlayer.x += moveX * speed;
-                    localPlayer.y += moveY * speed;
-                }
-            }
-            localPlayer.x = Math.min(Math.max(localPlayer.x, localPlayer.radius + 3), CANVAS_W - localPlayer.radius - 3);
-            localPlayer.y = Math.min(Math.max(localPlayer.y, localPlayer.radius + 3), CANVAS_H - localPlayer.radius - 3);
-        }
-        
-        function updateOnlineCount() {
-            playerCountSpan.innerText = `👥 ${otherPlayers.size + 1} 在线`;
-        }
-        
-        // ========================= WebSocket 消息处理 =========================
-        function sendPlayerState() {
-            if (!ws || ws.readyState !== WebSocket.OPEN) return;
-            try {
-                const msg = {
-                    type: "STATE",
-                    room: roomId,
-                    id: mySocketId,
-                    x: localPlayer.x,
-                    y: localPlayer.y,
-                    hp: Math.floor(localPlayer.hp),
-                    maxHp: Math.floor(localPlayer.maxHp),
-                    radius: localPlayer.radius
-                };
-                ws.send(JSON.stringify(msg));
-            } catch(e) {
-                console.warn("[SEND] 失败:", e.message);
-            }
-        }
-        
-        function sendJoinRoom() {
-            if (!ws || ws.readyState !== WebSocket.OPEN) return;
-            try {
-                const msg = {
-                    type: "JOIN",
-                    room: roomId,
-                    id: mySocketId,
-                    x: localPlayer.x,
-                    y: localPlayer.y,
-                    hp: Math.floor(localPlayer.hp),
-                    maxHp: Math.floor(localPlayer.maxHp),
-                    radius: localPlayer.radius
-                };
-                ws.send(JSON.stringify(msg));
-            } catch(e) {
-                console.warn("[JOIN] 失败:", e.message);
-            }
-        }
-        
-        function sendLeaveRoom() {
-            if (!ws || ws.readyState !== WebSocket.OPEN || !mySocketId) return;
-            try {
-                const msg = {
-                    type: "LEAVE",
-                    room: roomId,
-                    id: mySocketId
-                };
-                ws.send(JSON.stringify(msg));
-            } catch(e) {
-                console.warn("[LEAVE] 失败:", e.message);
-            }
-        }
-        
-        // ========================= WebSocket 连接管理 =========================
-        function connectWebSocket() {
-            if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-                return; // 已在连接中
-            }
-            
-            console.log(`[WS] 正在连接到服务器... (尝试 ${connectionAttempts + 1}/${MAX_RETRY_ATTEMPTS})`);
-            console.log(`[WS] 服务器: ${WS_SERVER}`);
-            
-            ws = new WebSocket(WS_SERVER);
-            
-            ws.onopen = () => {
-                console.log("[WS] ✅ 连接成功");
-                isConnected = true;
-                connectionAttempts = 0;
-                led.classList.remove('led-off');
-                connTextSpan.innerText = "🟢 已连接";
-                sendJoinRoom();
-                
-                // 启动网络同步循环
-                if (window.netInterval) clearInterval(window.netInterval);
-                window.netInterval = setInterval(() => {
-                    if (isConnected && ws && ws.readyState === WebSocket.OPEN) {
-                        sendPlayerState();
-                    }
-                    // 清理超时玩家
-                    const now = Date.now();
-                    for (let [pid, pl] of otherPlayers.entries()) {
-                        if (now - pl.lastUpdate > 5000) { // 5秒无更新则移除
-                            otherPlayers.delete(pid);
-                            updateOnlineCount();
-                            console.log(`[REMOVE] 玩家 ${pid} 已离线`);
-                        }
-                    }
-                }, NETWORK_SYNC_INTERVAL_MS);
-            };
-            
-            ws.onmessage = (event) => {
-                try {
-                    const msg = JSON.parse(event.data);
-                    
-                    // 只处理当前房间的消息
-                    if (msg.room !== roomId || msg.id === mySocketId) return;
-                    
-                    switch (msg.type) {
-                        case "JOIN":
-                        case "STATE":
-                            if (!otherPlayers.has(msg.id)) {
-                                otherPlayers.set(msg.id, {
-                                    id: msg.id,
-                                    x: msg.x,
-                                    y: msg.y,
-                                    hp: msg.hp,
-                                    maxHp: msg.maxHp,
-                                    radius: msg.radius,
-                                    lastUpdate: Date.now()
-                                });
-                                updateOnlineCount();
-                                if (msg.type === "JOIN") {
-                                    console.log(`[JOIN] 新玩家加入: ${msg.id.slice(-6)}`);
-                                }
-                            } else {
-                                const p = otherPlayers.get(msg.id);
-                                p.x = msg.x;
-                                p.y = msg.y;
-                                p.hp = msg.hp;
-                                p.maxHp = msg.maxHp;
-                                p.radius = msg.radius;
-                                p.lastUpdate = Date.now();
-                            }
-                            break;
-                        case "LEAVE":
-                            if (otherPlayers.has(msg.id)) {
-                                otherPlayers.delete(msg.id);
-                                updateOnlineCount();
-                                console.log(`[LEAVE] 玩家离开: ${msg.id.slice(-6)}`);
-                            }
-                            break;
-                    }
-                } catch(e) {
-                    // 忽略非 JSON 消息
-                }
-            };
-            
-            ws.onclose = () => {
-                console.log("[WS] ❌ 连接已断开");
-                isConnected = false;
-                led.classList.add('led-off');
-                connTextSpan.innerText = "🔴 已断开";
-                
-                // 自动重连（指数退避）
-                connectionAttempts++;
-                if (connectionAttempts < MAX_RETRY_ATTEMPTS) {
-                    const delayMs = Math.min(1000 * Math.pow(2, connectionAttempts), 30000);
-                    console.log(`[RECONNECT] 将在 ${delayMs}ms 后重连...`);
-                    setTimeout(() => {
-                        if (!isConnected) connectWebSocket();
-                    }, delayMs);
-                } else {
-                    console.error("[FATAL] 连接失败次数过多，请刷新页面");
-                    connTextSpan.innerText = "⚠️ 连接失败";
-                }
-            };
-            
-            ws.onerror = (err) => {
-                console.error("[WS] 错误:", err);
-                connTextSpan.innerText = "⚠️ 连接异常";
-            };
-        }
-        
-        function changeRoom(newRoom) {
-            if (newRoom.trim() === "") return;
-            const oldRoom = roomId;
-            roomId = newRoom.trim();
-            
-            console.log(`[ROOM] 从 "${oldRoom}" 切换到 "${roomId}"`);
-            
-            // 先发送离开旧房间的消息
-            sendLeaveRoom();
-            
-            // 清空其他玩家
-            otherPlayers.clear();
-            updateOnlineCount();
-            
-            // 重新连接以加入新房间
-            setTimeout(() => {
-                sendJoinRoom();
-            }, 100);
-        }
-        
-        // ========================= 图形渲染 =========================
-        function draw() {
-            ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-            
-            // 绘制网格
-            ctx.strokeStyle = "#88ffdd30";
-            ctx.lineWidth = 1;
-            for (let i = 0; i < CANVAS_W + 50; i += 50) {
-                ctx.beginPath();
-                ctx.moveTo(i, 0);
-                ctx.lineTo(i, CANVAS_H);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(0, i);
-                ctx.lineTo(CANVAS_W, i);
-                ctx.stroke();
-            }
-            
-            // 绘制物品
-            for (let it of items) {
-                if (it.type === TYPE_BLUE) {
-                    ctx.fillStyle = "#3c9eff";
-                    ctx.shadowBlur = 6;
-                    ctx.fillRect(it.x - it.size/2, it.y - it.size/2, it.size, it.size);
-                    ctx.fillStyle = "#b5e4ff";
-                    ctx.fillRect(it.x - it.size/3.5, it.y - it.size/3.5, it.size/2.2, it.size/2.2);
-                } else {
-                    ctx.fillStyle = "#ff5e7e";
-                    ctx.beginPath();
-                    let s = it.size;
-                    ctx.moveTo(it.x, it.y - s*0.7);
-                    ctx.lineTo(it.x + s*0.8, it.y + s*0.5);
-                    ctx.lineTo(it.x - s*0.8, it.y + s*0.5);
-                    ctx.fill();
-                    ctx.fillStyle = "#ffb3c6";
-                    ctx.beginPath();
-                    ctx.moveTo(it.x, it.y - s*0.35);
-                    ctx.lineTo(it.x + s*0.45, it.y + s*0.25);
-                    ctx.lineTo(it.x - s*0.45, it.y + s*0.25);
-                    ctx.fill();
-                }
-            }
-            ctx.shadowBlur = 0;
-            
-            // 绘制其他玩家
-            for (let [pid, pl] of otherPlayers.entries()) {
-                ctx.beginPath();
-                let grad = ctx.createRadialGradient(pl.x-4, pl.y-4, 3, pl.x, pl.y, pl.radius);
-                grad.addColorStop(0, '#ffb074');
-                grad.addColorStop(1, '#c94f00');
-                ctx.fillStyle = grad;
-                ctx.arc(pl.x, pl.y, pl.radius, 0, Math.PI*2);
-                ctx.fill();
-                ctx.fillStyle = "#FFFFCC";
-                ctx.font = "bold 15px 'Segoe UI'";
-                ctx.shadowBlur = 3;
-                ctx.fillText(`❤️ ${pl.hp}`, pl.x-20, pl.y-12);
-                ctx.font = "10px monospace";
-                ctx.fillStyle = "#caf0f8";
-                ctx.fillText(pid.slice(-5), pl.x-18, pl.y+pl.radius+4);
-            }
-            
-            // 绘制本地玩家
-            ctx.beginPath();
-            let gradLocal = ctx.createRadialGradient(localPlayer.x-6, localPlayer.y-6, 5, localPlayer.x, localPlayer.y, localPlayer.radius);
-            gradLocal.addColorStop(0, '#a5ffc9');
-            gradLocal.addColorStop(1, '#25a36b');
-            ctx.fillStyle = gradLocal;
-            ctx.arc(localPlayer.x, localPlayer.y, localPlayer.radius, 0, Math.PI*2);
-            ctx.fill();
-            ctx.fillStyle = "#FFFFFF";
-            ctx.font = "bold 18px system-ui";
-            ctx.shadowBlur = 4;
-            ctx.fillText(`${Math.floor(localPlayer.hp)}/${Math.floor(localPlayer.maxHp)}`, localPlayer.x-28, localPlayer.y-14);
-            ctx.font = "bold 12px monospace";
-            ctx.fillStyle = "#ffffaa";
-            ctx.fillText("⚡我", localPlayer.x-12, localPlayer.y+localPlayer.radius+6);
-            ctx.shadowBlur = 0;
-        }
-        
-        // ========================= 主游戏循环 =========================
-        function localGameLoop() {
-            updatePlayerMovement();
-            handleCollisionsWithItems();
-            updateLocalUI();
-            draw();
-            requestAnimationFrame(localGameLoop);
-        }
-        
-        function refillItems() {
-            if (items.length < ITEM_COUNT) {
-                let needed = ITEM_COUNT - items.length;
-                for (let i = 0; i < needed; i++) {
-                    items.push({
-                        type: Math.random() < 0.55 ? TYPE_BLUE : TYPE_RED,
-                        x: 35 + Math.random() * (CANVAS_W - 70),
-                        y: 35 + Math.random() * (CANVAS_H - 70),
-                        size: 20
-                    });
-                }
-            }
-            setTimeout(refillItems, 7000);
-        }
-        
-        // ========================= 事件绑定 =========================
-        function initControls() {
-            canvas.addEventListener('mousemove', (e) => {
-                const rect = canvas.getBoundingClientRect();
-                const scaleX = CANVAS_W / rect.width;
-                const scaleY = CANVAS_H / rect.height;
-                let canvasX = (e.clientX - rect.left) * scaleX;
-                let canvasY = (e.clientY - rect.top) * scaleY;
-                if (canvasX >= 0 && canvasX <= CANVAS_W && canvasY >= 0 && canvasY <= CANVAS_H) {
-                    mouseX = canvasX;
-                    mouseY = canvasY;
-                    useMouse = true;
-                }
-            });
-            
-            canvas.addEventListener('touchmove', (e) => {
-                e.preventDefault();
-                const rect = canvas.getBoundingClientRect();
-                const touch = e.touches[0];
-                let canvasX = (touch.clientX - rect.left) * (CANVAS_W / rect.width);
-                let canvasY = (touch.clientY - rect.top) * (CANVAS_H / rect.height);
-                if (canvasX >= 0 && canvasX <= CANVAS_W && canvasY >= 0 && canvasY <= CANVAS_H) {
-                    mouseX = canvasX;
-                    mouseY = canvasY;
-                    useMouse = true;
-                }
-            });
-            
-            window.addEventListener('keydown', (e) => {
-                let k = e.key.toLowerCase();
-                if (k === 'w') keys.w = true;
-                if (k === 's') keys.s = true;
-                if (k === 'a') keys.a = true;
-                if (k === 'd') keys.d = true;
-                if (keys.w || keys.s || keys.a || keys.d) useMouse = false;
-            });
-            
-            window.addEventListener('keyup', (e) => {
-                let k = e.key.toLowerCase();
-                if (k === 'w') keys.w = false;
-                if (k === 's') keys.s = false;
-                if (k === 'a') keys.a = false;
-                if (k === 'd') keys.d = false;
-            });
-            
-            document.getElementById('resetBtn').addEventListener('click', () => {
-                respawnPlayer();
-            });
-            
-            joinRoomBtn.addEventListener('click', () => {
-                let newRoom = roomInput.value.trim();
-                if (newRoom) changeRoom(newRoom);
-            });
-            
-            roomInput.value = roomId;
-            
-            window.addEventListener('beforeunload', () => {
-                sendLeaveRoom();
-            });
-        }
-        
-        // ========================= 游戏初始化 =========================
-        function initGame() {
-            console.log("[INIT] 游戏初始化中...");
-            items = generateItems();
-            updateLocalUI();
-            mySocketId = generateSocketId();
-            console.log("[INIT] 玩家ID:", mySocketId);
-            initControls();
-            connectWebSocket();
-            localGameLoop();
-            refillItems();
-            updateOnlineCount();
-        }
-        
-        initGame();
-    })();
-</script>
+<script src="js/game.js"></script>
 </body>
 </html>
