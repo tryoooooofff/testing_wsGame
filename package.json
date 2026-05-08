@@ -1,16 +1,12 @@
 {
-  "name": "ws-tank-game",
+  "name": "min-ws-game",
   "version": "1.0.0",
-  "description": "Multiplayer tank game with WebSocket, low-bandwidth binary protocol",
-  "main": "server/index.js",
-  "scripts": {
-    "start": "node server/index.js",
-    "dev": "node server/index.js"
-  },
-  "engines": {
-    "node": ">=18"
-  },
+  "main": "server.js",
   "dependencies": {
-    "ws": "^8.18.0"
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  },
+  "scripts": {
+    "start": "node server.js"
   }
 }
