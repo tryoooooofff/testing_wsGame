@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>⚔ Tank Battle — WebSocket Multiplayer</title>
+<script>
+  // ⬇ 部署后把这里改成你的 Railway 地址（保留 wss:// 前缀）
+  // 本地开发不需要改，自动连 localhost:3000
+window.WS_URL = 'wss://ws-game-production.up.railway.app';
+</script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
