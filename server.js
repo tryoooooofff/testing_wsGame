@@ -1,110 +1,177 @@
 const WebSocket = require('ws');
 const http = require('http');
-const cors = require('cors');
-const express = require('express');
 
-const app = express();
-const server = http.createServer(app);
+const PORT = process.env.PORT || 8080;
+const server = http.createServer();
 const wss = new WebSocket.Server({ server });
 
-app.use(cors());
-app.use(express.static('.'));
+// 房间数据结构: Map<roomId, Set<WebSocket>>
+const rooms = new Map();
 
-const rooms = new Map(); // { roomId: Set<player> }
-const players = new Map(); // { ws: { id, room, x, y, ... } }
+// 玩家数据: Map<WebSocket, playerData>
+const players = new Map();
 
-wss.on('connection', (ws) => {
-    console.log('[WS] New connection');
-    let playerData = null;
+function getOrCreateRoom(roomId) {
+    if (!rooms.has(roomId)) {
+        rooms.set(roomId, new Set());
+    }
+    return rooms.get(roomId);
+}
 
-    ws.on('message', (data) => {
-        try {
-            const msg = JSON.parse(data);
-            const { type, room, id, x, y, hp, maxHp, radius } = msg;
-
-            // First time joining
-            if (!playerData) {
-                playerData = { id, room, x, y, hp, maxHp, radius };
-                players.set(ws, playerData);
-                
-                if (!rooms.has(room)) {
-                    rooms.set(room, new Set());
-                }
-                rooms.get(room).add(ws);
-                console.log(`[JOIN] Player ${id.slice(-6)} joined room "${room}"`);
-            } else {
-                // Update existing player data
-                playerData.room = room;
-                playerData.x = x;
-                playerData.y = y;
-                playerData.hp = hp;
-                playerData.maxHp = maxHp;
-                playerData.radius = radius;
-            }
-
-            // Handle room changes
-            if (playerData.room !== room) {
-                // Leave old room
-                if (rooms.has(playerData.room)) {
-                    rooms.get(playerData.room).delete(ws);
-                    // Notify others
-                    broadcastToRoom(playerData.room, {
-                        type: 'LEAVE',
-                        id: id,
-                        room: playerData.room
-                    });
-                }
-                // Join new room
-                playerData.room = room;
-                if (!rooms.has(room)) {
-                    rooms.set(room, new Set());
-                }
-                rooms.get(room).add(ws);
-                console.log(`[ROOM_CHANGE] Player ${id.slice(-6)} moved to "${room}"`);
-            }
-
-            // Broadcast message to all players in the room
-            broadcastToRoom(room, msg);
-
-        } catch (e) {
-            console.error('[ERROR] Message parsing:', e.message);
-        }
-    });
-
-    ws.on('close', () => {
-        if (playerData) {
-            const { id, room } = playerData;
-            console.log(`[LEAVE] Player ${id.slice(-6)} disconnected from "${room}"`);
-            
-            if (rooms.has(room)) {
-                rooms.get(room).delete(ws);
-                // Notify others
-                broadcastToRoom(room, {
-                    type: 'LEAVE',
-                    id: id,
-                    room: room
-                });
-            }
-        }
-        players.delete(ws);
-    });
-
-    ws.on('error', (err) => {
-        console.error('[WS_ERROR]', err.message);
-    });
-});
-
-function broadcastToRoom(room, msg) {
-    if (!rooms.has(room)) return;
-    rooms.get(room).forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(msg));
+function broadcastToRoom(roomId, message, excludeWs = null) {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    
+    const data = JSON.stringify(message);
+    room.forEach(ws => {
+        if (ws.readyState === WebSocket.OPEN && ws !== excludeWs) {
+            ws.send(data);
         }
     });
 }
 
-const PORT = process.env.PORT || 8080;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 WebSocket relay server running on port ${PORT}`);
-    console.log(`📡 Connect to: ws://localhost:${PORT}`);
+wss.on('connection', (ws) => {
+    console.log(`[CONNECT] 新连接建立，当前连接数: ${wss.clients.size}`);
+    
+    let currentRoom = null;
+    let playerData = null;
+    
+    ws.on('message', (data) => {
+        try {
+            const msg = JSON.parse(data);
+            
+            switch (msg.type) {
+                case 'JOIN':
+                    // 离开旧房间
+                    if (currentRoom && rooms.has(currentRoom)) {
+                        const oldRoom = rooms.get(currentRoom);
+                        oldRoom.delete(ws);
+                        if (oldRoom.size === 0) rooms.delete(currentRoom);
+                    }
+                    
+                    // 加入新房间
+                    currentRoom = msg.room || 'public';
+                    const room = getOrCreateRoom(currentRoom);
+                    room.add(ws);
+                    
+                    playerData = {
+                        id: msg.id,
+                        x: msg.x || 0,
+                        y: msg.y || 0,
+                        hp: msg.hp || 100,
+                        maxHp: msg.maxHp || 100,
+                        radius: msg.radius || 22
+                    };
+                    players.set(ws, playerData);
+                    
+                    // 广播 JOIN 消息给房间内其他玩家
+                    broadcastToRoom(currentRoom, {
+                        type: 'JOIN',
+                        room: currentRoom,
+                        id: msg.id,
+                        x: msg.x,
+                        y: msg.y,
+                        hp: msg.hp,
+                        maxHp: msg.maxHp,
+                        radius: msg.radius
+                    }, ws);
+                    
+                    // 发送房间内其他玩家的状态给新加入的玩家
+                    room.forEach(otherWs => {
+                        if (otherWs !== ws && otherWs.readyState === WebSocket.OPEN) {
+                            const otherPlayer = players.get(otherWs);
+                            if (otherPlayer) {
+                                ws.send(JSON.stringify({
+                                    type: 'STATE',
+                                    room: currentRoom,
+                                    id: otherPlayer.id,
+                                    x: otherPlayer.x,
+                                    y: otherPlayer.y,
+                                    hp: otherPlayer.hp,
+                                    maxHp: otherPlayer.maxHp,
+                                    radius: otherPlayer.radius
+                                }));
+                            }
+                        }
+                    });
+                    
+                    console.log(`[JOIN] 玩家 ${msg.id.slice(-6)} 加入房间 "${currentRoom}"，房间玩家数: ${room.size}`);
+                    break;
+                
+                case 'STATE':
+                    if (!currentRoom || msg.room !== currentRoom) return;
+                    
+                    // 更新玩家数据
+                    if (playerData) {
+                        playerData.x = msg.x;
+                        playerData.y = msg.y;
+                        playerData.hp = msg.hp;
+                        playerData.maxHp = msg.maxHp;
+                        playerData.radius = msg.radius;
+                    }
+                    
+                    // 广播状态给房间内其他玩家
+                    broadcastToRoom(currentRoom, {
+                        type: 'STATE',
+                        room: currentRoom,
+                        id: msg.id,
+                        x: msg.x,
+                        y: msg.y,
+                        hp: msg.hp,
+                        maxHp: msg.maxHp,
+                        radius: msg.radius
+                    }, ws);
+                    break;
+                
+                case 'LEAVE':
+                    if (currentRoom && msg.room === currentRoom && playerData) {
+                        // 广播 LEAVE 消息
+                        broadcastToRoom(currentRoom, {
+                            type: 'LEAVE',
+                            room: currentRoom,
+                            id: msg.id
+                        });
+                        
+                        console.log(`[LEAVE] 玩家 ${msg.id.slice(-6)} 离开房间 "${currentRoom}"`);
+                    }
+                    break;
+            }
+        } catch (e) {
+            console.warn('[MSG] 解析消息失败:', e.message);
+        }
+    });
+    
+    ws.on('close', () => {
+        // 从房间移除
+        if (currentRoom && rooms.has(currentRoom)) {
+            const room = rooms.get(currentRoom);
+            room.delete(ws);
+            
+            // 如果房间为空则删除
+            if (room.size === 0) {
+                rooms.delete(currentRoom);
+            } else if (playerData) {
+                // 广播玩家离线消息
+                broadcastToRoom(currentRoom, {
+                    type: 'LEAVE',
+                    room: currentRoom,
+                    id: playerData.id
+                });
+            }
+        }
+        
+        // 清除玩家数据
+        players.delete(ws);
+        
+        console.log(`[DISCONNECT] 连接断开，当前连接数: ${wss.clients.size}`);
+    });
+    
+    ws.on('error', (err) => {
+        console.error('[ERROR] WebSocket 错误:', err.message);
+    });
+});
+
+server.listen(PORT, () => {
+    console.log(`🎮 Game WebSocket Server running on port ${PORT}`);
+    console.log(`📡 Connect from: ws://localhost:${PORT}`);
 });
