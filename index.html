@@ -175,13 +175,13 @@
             <button id="resetBtn">🔄 重生</button>
         </div>
         <div class="room-panel" id="roomPanel">
-            <span>🎮 ���间码:</span>
+            <span>🎮 房间码:</span>
             <input type="text" id="roomInput" placeholder="输入房间号" maxlength="20" value="public">
             <button id="joinRoomBtn">加入</button>
             <span id="playerCountSpan" class="badge-online">👥 1 在线</span>
         </div>
         <div class="tips">
-            ⚡ 🔵蓝色方块 → 最大血量+6 &nbsp;&nbsp;|&nbsp;&nbsp; 🔺红色三角 → 回复+20血量 &nbsp;&nbsp;|&nbsp;&nbsp; 🌐 多人同步(3帧/秒) &nbsp;|&nbsp; 🖱️鼠标/键[...]
+            ⚡ 🔵蓝色方块 → 最大血量+6 &nbsp;&nbsp;|&nbsp;&nbsp; 🔺红色三角 → 回复+20血量 &nbsp;&nbsp;|&nbsp;&nbsp; 🌐 多人同步(3帧/秒) &nbsp;|&nbsp; 🖱️鼠标/键盘方向键移动
         </div>
         <div id="statusBanner" class="status-banner" style="text-align:center; margin-top:8px;">🟢 游戏已启动 | 房间内所有玩家共享一个世界</div>
     </div>
@@ -223,8 +223,10 @@
         let connectionAttempts = 0;
         const MAX_RETRY_ATTEMPTS = 5;
         
-        // 使用稳定的公共广播服务（实时性好）
-        const WS_SERVER = "wss://relay.example.com:443/ws"; // 备选: 如果失败使用本地中继
+        // TODO: 替换为实际的 WebSocket 服务器地址
+        // 本地开发: "ws://localhost:8080"
+        // 生产环境: 部署自己的 WebSocket 服务器
+        const WS_SERVER = "wss://echo.websocket.org/";
         
         // ========================= DOM 元素 =========================
         const canvas = document.getElementById('gameCanvas');
