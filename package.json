@@ -1,19 +1,16 @@
 {
-  "name": "wsgame-server",
+  "name": "ws-tank-game",
   "version": "1.0.0",
-  "description": "WebSocket multiplayer game server",
-  "main": "server.js",
+  "description": "Multiplayer tank game with WebSocket, low-bandwidth binary protocol",
+  "main": "server/index.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "keywords": ["websocket", "game", "multiplayer"],
-  "author": "",
-  "license": "MIT",
-  "dependencies": {
-    "ws": "^8.14.2"
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
   }
 }
